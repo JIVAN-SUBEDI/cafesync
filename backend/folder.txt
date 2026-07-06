@@ -1,0 +1,285 @@
+hotel-management-system/
+├── .env                         # Environment variables
+├── .env.example                # Environment variables template
+├── .gitignore
+├── package.json
+├── server.js                   # Main server file
+├── docker-compose.yml          # Docker configuration
+├── Dockerfile
+├── README.md
+├── database/
+│   └── schema.sql             # Complete database schema
+│
+├── src/
+│   ├── app.js                  # Express app configuration
+│   ├── server.js              # Server startup (optional)
+│   │
+│   ├── config/
+│   │   ├── database.js        # PostgreSQL connection
+│   │   ├── cors.js           # CORS configuration
+│   │   ├── helmet.js         # Security headers
+│   │   ├── rateLimit.js      # Rate limiting
+│   │   └── swagger.js        # API documentation
+│   │
+│   ├── models/                # Database models
+│   │   ├── BaseModel.js      # Base model class
+│   │   ├── RegisteredUser.js
+│   │   ├── MainAdmin.js
+│   │   ├── Hotel.js
+│   │   ├── HotelAdmin.js
+│   │   ├── SubscriptionPlan.js
+│   │   ├── SubscriptionInvoice.js
+│   │   ├── Staff.js
+│   │   ├── StaffLogin.js
+│   │   ├── HotelTable.js
+│   │   ├── MenuCategory.js
+│   │   ├── MenuItem.js
+│   │   ├── Order.js
+│   │   ├── OrderItem.js
+│   │   ├── ActivityLog.js
+│   │   └── Notification.js
+│   │
+│   ├── controllers/           # Business logic
+│   │   ├── authController.js
+│   │   ├── hotelController.js
+│   │   ├── subscriptionController.js
+│   │   ├── staffController.js
+│   │   ├── menuController.js
+│   │   ├── orderController.js
+│   │   ├── dashboardController.js
+│   │   ├── mainAdminController.js
+│   │   └── publicController.js
+│   │
+│   ├── routes/               # API routes
+│   │   ├── index.js         # Route aggregator
+│   │   ├── authRoutes.js
+│   │   ├── hotelRoutes.js
+│   │   ├── subscriptionRoutes.js
+│   │   ├── staffRoutes.js
+│   │   ├── menuRoutes.js
+│   │   ├── orderRoutes.js
+│   │   ├── dashboardRoutes.js
+│   │   ├── mainAdminRoutes.js
+│   │   └── publicRoutes.js
+│   │
+│   ├── middleware/           # Custom middleware
+│   │   ├── auth.js          # Authentication
+│   │   ├── roleCheck.js     # Role-based access
+│   │   ├── validation.js    # Request validation
+│   │   ├── errorHandler.js  # Error handling
+│   │   ├── logger.js        # Request logging
+│   │   ├── sanitize.js      # Input sanitization
+│   │   └── rateLimit.js     # Custom rate limiting
+│   │
+│   ├── services/            # External services
+│   │   ├── EmailService.js
+│   │   ├── PaymentService.js
+│   │   ├── NotificationService.js
+│   │   ├── StorageService.js (for file uploads)
+│   │   └── SMSService.js    (optional)
+│   │
+│   ├── utils/               # Utility functions
+│   │   ├── validators.js
+│   │   ├── helpers.js
+│   │   ├── logger.js        # Winston logger
+│   │   ├── constants.js
+│   │   ├── generateSlug.js
+│   │   ├── generateCode.js  (staff codes, order numbers)
+│   │   ├── dateFormatters.js
+│   │   └── currency.js
+│   │
+│   ├── scripts/             # Database and maintenance scripts
+│   │   ├── init-db.js
+│   │   ├── seed-data.js
+│   │   ├── backup-db.js
+│   │   ├── cleanup.js       (old logs, expired tokens)
+│   │   └── migrate.js       (database migrations)
+│   │
+│   ├── validators/          # Request validators (optional)
+│   │   ├── authValidators.js
+│   │   ├── hotelValidators.js
+│   │   ├── subscriptionValidators.js
+│   │   └── staffValidators.js
+│   │
+│   ├── sockets/             # Socket.IO for real-time
+│   │   ├── index.js
+│   │   ├── kitchenSocket.js
+│   │   └── orderSocket.js
+│   │
+│   └── jobs/                # Cron jobs/background tasks
+│       ├── index.js
+│       ├── subscriptionReminders.js
+│       ├── cleanupJobs.js
+│       └── reportJobs.js
+│
+├── tests/                   # Test files
+│   ├── unit/
+│   │   ├── models/
+│   │   ├── controllers/
+│   │   └── utils/
+│   ├── integration/
+│   │   ├── auth.test.js
+│   │   ├── hotel.test.js
+│   │   └── subscription.test.js
+│   ├── fixtures/           # Test data
+│   ├── setup.js           # Test setup
+│   └── teardown.js        # Test cleanup
+│
+├── logs/                   # Application logs
+│   ├── error.log
+│   ├── combined.log
+│   └── access.log
+│
+├── uploads/               # File uploads
+│   ├── menus/
+│   ├── logos/
+│   └── qrcodes/
+│
+├── public/                # Static files
+│   ├── index.html        # Landing page
+│   ├── css/
+│   ├── js/
+│   └── images/
+│
+├── docs/                  # Documentation
+│   ├── api/
+│   │   ├── auth.md
+│   │   ├── hotels.md
+│   │   └── subscriptions.md
+│   ├── setup.md
+│   └── deployment.md
+│
+└── docker/               # Docker-specific files
+    ├── nginx/
+    │   └── nginx.conf
+    ├── postgres/
+    │   └── init.sql
+    └── redis/
+        └── redis.conf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{
+    "success": true,
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkMzY1Y2ExLTQyMzUtNDU0MC1hOTViLWRiZTY1MTVjOTViYiIsInJvbGUiOiJtYWluX2FkbWluIiwiaWF0IjoxNzY4OTgyNDI1LCJleHAiOjE3Njk1ODcyMjV9.T5yD_uyA7Q_gpLj_xhJ3yrCZ4-INOl9G_elHx0e3b3o",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImFkMzY1Y2ExLTQyMzUtNDU0MC1hOTViLWRiZTY1MTVjOTViYiIsInR5cGUiOiJyZWZyZXNoIiwiaWF0IjoxNzY4OTgyNDI1LCJleHAiOjE3NzE1NzQ0MjV9.z4I5VZUTVBqg-wUMcq27MwfOjBy--Cr3lsoB6LpdTzY",
+    "user": {
+        "id": "ad365ca1-4235-4540-a95b-dbe6515c95bb",
+        "email": "mads@gmail.com",
+        "full_name": "mads"
+    }
+}
+
+
+
+
+
+Act as a technical recruiter at a fast-growing startup. I’m going to paste my resume below. I want you to rewrite it so I look like a high-potential candidate for an entry-level software engineering, ML, or data science role. Focus on results, impact, clarity. Rewrite bullet points using action verbs and measurable outcomes. Turn personal projects into business value. Keep it under 1 page. Add any missing sections like tools or a technical summary. Highlight transferable skills. End with 3 resume tips and 5 skill-building action items.
+
+
+
+
+
+
+
+CodeCollab – Real-Time Collaborative Code Editor
+
+React, Node.js, Express, MongoDB, Socket.IO, Tailwind | Jun 2025
+
+Designed and built a real-time code editor supporting 100+ concurrent users with live cursor tracking and instant code execution.
+
+Solved remote collaboration challenges by implementing low-latency Socket.IO events, improving sync reliability under load.
+
+Implemented secure authentication using JWT and Google OAuth, reducing unauthorized access risks.
+
+Optimized WebSocket traffic and state updates to improve performance and scalability.
+
+AI Task Manager – Productivity Web App
+React, Node.js, Express, MongoDB, Tailwind | Jan 2025
+
+Built an AI-powered task manager that automatically summarizes tasks and suggests priorities, improving user productivity.
+
+Implemented automated email reminders, reducing missed deadlines and increasing task completion rates.
+
+Designed a clean, responsive UI that simplified task workflows and improved usability across devices.
+
+E-Commerce Platform – Multi-Role System
+React, Node.js, Express, MongoDB, Tailwind | Oct 2024
+
+Developed a buyer–seller marketplace with role-based access for admins, sellers, and buyers.
+
+Implemented JWT-based authentication and authorization, securing protected routes and admin actions.
+
+Built seller verification workflows to increase trust and platform reliability.
+
+Real-Time Chat Application
+React, Node.js, Express, MongoDB, Socket.IO | Jul 2024
+
+Created a real-time chat system with private and group messaging, notifications, and Socket.IO rooms.
+Secured sessions using JWT and cookie-based authentication.
+Improved real-time communication reliability through event handling and state synchronization.
+
+Netflix Clone – MERN Stack
+React, Node.js, Express, MongoDB, Tailwind | Aug 2024
+
+Built a Netflix-style streaming UI using the TMDB API for dynamic content.
+Implemented secure login, trending recommendations, and advanced search functionality.
+Focused on clean UI, performance, and reusable components.
+
+
+
+
+
+—
+Uddhav Adhikari
+fullstack intern · jit global
+980 · 530 · 5606
+auddhav074@gmail.com
+https://www.teamworkonline.com/business_cards/dab4810460f779ab
+
+
+
+postgresql://test_q1dt_user:Q8vSgpWnVfDrj6tZ8VuiknKsrLtSMq7y@dpg-d65f0pemcj7s739s6ta0-a.singapore-postgres.render.com
+/
+test_q1dt
+
+
+
+
+Scalable architecture capable of handling 1,000+ simultaneous users across multiple cafés with real-time order and data synchronization.
+
+Secure system design using encrypted credentials, JWT-based authentication, role-based access control, and protected APIs.
+
+Centralized café operations management including orders, billing, menus, tables, staff, and inventory in a single platform.
+
+Real-time analytics and reporting providing actionable insights into sales, revenue, staff performance, and inventory levels.
+
+
+
+Sherpa wifi:- 9L74ENW+oJBcF0b
+
+
+postgresql://test1_darc_user:B3WouRMmFRJ2jMNNKTouey7PreOtszB2@dpg-
+
+d6rdegnpm1nc73bhul7g-a.singapore-postgres.render.com
+/
+test1_darc
