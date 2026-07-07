@@ -97,7 +97,7 @@ export default function KitchenView({ hotelSlug }: KitchenViewProps) {
   }, [])
 
   useEffect(() => {
-    const socket: Socket = io('http://localhost:4000',{
+    const socket: Socket = io('https://api.cafesync.online',{
       withCredentials: true,
     })
 
