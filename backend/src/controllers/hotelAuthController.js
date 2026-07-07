@@ -1717,6 +1717,8 @@ exports.upgradeDowngradeBilling = async (req, res, next) => {
     const tax_amount = amount * 0.13;
 const total_amount = amount + tax_amount;
 
+
+
 const invoiceResult = await client.query(
   `
   INSERT INTO subscription_invoices (
@@ -1732,16 +1734,12 @@ const invoiceResult = await client.query(
     due_date,
     status,
     payment_method,
-    transaction_id,
-    created_at,
-    updated_at
+    transaction_id
   )
   VALUES (
     $1, $2, $3, $4, $5, $6, $7,
     $8::date, $9::date, $10::date,
-    'pending', $11, $12,
-    CURRENT_TIMESTAMP,
-    CURRENT_TIMESTAMP
+    'pending', $11, $12
   )
   RETURNING *
   `,
@@ -1758,7 +1756,7 @@ const invoiceResult = await client.query(
     subDateOnly(now),
     paymentMethod,
     transactionUuid,
-  ],
+  ]
 );
     console.log(total_amount)
     const invoice = invoiceResult.rows[0];
