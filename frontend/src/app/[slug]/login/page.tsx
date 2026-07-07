@@ -59,27 +59,35 @@ const { tenant, status: tenantStatus, error: tenantError } = useSelector(
 
   const tenantSlug = tenant?.slug || routeSlug;
 
-  const authErrorMessage =
-    typeof authError === "string"
-      ? authError
-      : authError && typeof authError === "object" && "message" in authError
-      ? String(authError.message)
-      : "";
+const authErrorValue: unknown = authError;
 
-  const authErrorCode =
-    authError && typeof authError === "object" && "error" in authError
-      ? String(authError.error)
-      : "";
+const isAuthErrorObject = (
+  value: unknown
+): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null;
+};
 
-  const retryAfter =
-    authError && typeof authError === "object" && "retryAfter" in authError
-      ? Number(authError.retryAfter)
-      : undefined;
+const authErrorMessage =
+  typeof authErrorValue === "string"
+    ? authErrorValue
+    : isAuthErrorObject(authErrorValue) && "message" in authErrorValue
+    ? String(authErrorValue.message)
+    : "";
 
-  const remainingAttempts =
-    authError && typeof authError === "object" && "remainingAttempts" in authError
-      ? Number(authError.remainingAttempts)
-      : undefined;
+const authErrorCode =
+  isAuthErrorObject(authErrorValue) && "error" in authErrorValue
+    ? String(authErrorValue.error)
+    : "";
+
+const retryAfter =
+  isAuthErrorObject(authErrorValue) && "retryAfter" in authErrorValue
+    ? Number(authErrorValue.retryAfter)
+    : undefined;
+
+const remainingAttempts =
+  isAuthErrorObject(authErrorValue) && "remainingAttempts" in authErrorValue
+    ? Number(authErrorValue.remainingAttempts)
+    : undefined;
 
   useEffect(() => {
     if (routeSlug) {
