@@ -128,15 +128,39 @@ function normalizeBillingCycle(value) {
   return v === "yearly" ? "yearly" : "monthly";
 }
 
+// FIX: use the real primary key of hotels table before inserting into users
+function getCreatedHotelId(hotel) {
+  const hotelId = hotel?.id || hotel?.hotel_id;
+
+  if (!hotelId) {
+    console.log("Hotel returned from createHotelWithSubscription:", hotel);
+    throw new Error("Hotel creation did not return hotels.id");
+  }
+
+  return hotelId;
+}
+
 async function createHotelOwnerUser({
   client,
   hotel,
   pendingOrPayload,
   passwordHash,
 }) {
+  const hotelId = getCreatedHotelId(hotel);
+
+  // Optional safety check: confirms this hotel exists inside same transaction
+  const hotelCheck = await client.query(
+    `SELECT id FROM hotels WHERE id = $1 LIMIT 1`,
+    [hotelId],
+  );
+
+  if (!hotelCheck.rows[0]) {
+    throw new Error(`Created hotel not found before user insert: ${hotelId}`);
+  }
+
   return User.create(
     {
-      hotel_id: hotel.id,
+      hotel_id: hotelId,
       full_name: pendingOrPayload.admin_name,
       email: pendingOrPayload.admin_email,
       phone_number: pendingOrPayload.admin_phone || null,
@@ -853,7 +877,7 @@ exports.KhaltiCallBack = async (req, res) => {
     if (status !== "Completed") {
       await PendingRegistration.delete(pending.id);
       return res.redirect(
-        `${process.env.API_BASE_URL}/registration/failed?reason=${encodeURIComponent(
+        `https://cafesync.online/registration/failed?reason=${encodeURIComponent(
           status || "payment_failed",
         )}`,
       );
@@ -864,7 +888,7 @@ exports.KhaltiCallBack = async (req, res) => {
     if (!plan) {
       await PendingRegistration.delete(pending.id);
       return res.redirect(
-        `${process.env.API_BASE_URL}/registration/failed?reason=invalid_plan`,
+        `https://cafesync.online/registration/failed?reason=invalid_plan`,
       );
     }
 
@@ -874,7 +898,7 @@ exports.KhaltiCallBack = async (req, res) => {
     if (expectedAmount && paidAmount !== expectedAmount) {
       await PendingRegistration.delete(pending.id);
       return res.redirect(
-        `${process.env.API_BASE_URL}/registration/failed?reason=amount_mismatch`,
+        `https://cafesync.online/registration/failed?reason=amount_mismatch`,
       );
     }
 
@@ -885,7 +909,7 @@ exports.KhaltiCallBack = async (req, res) => {
     });
 
     return res.redirect(
-      `${process.env.API_BASE_URL}/registration/success?hotel=${encodeURIComponent(
+      `https://cafesync.online/registration/success?hotel=${encodeURIComponent(
         hotel.hotel_slug,
       )}`,
     );
@@ -945,7 +969,7 @@ exports.esewaSuccess = async (req, res) => {
       await PendingRegistration.delete(pending.id);
 
       return res.redirect(
-        `${process.env.API_BASE_URL}/registration/failed?reason=payment_not_complete`,
+        `https://cafesync.online/registration/failed?reason=payment_not_complete`,
       );
     }
 
@@ -974,7 +998,7 @@ exports.esewaSuccess = async (req, res) => {
 
     if (!verifyData || verifyData.status !== "COMPLETE") {
       return res.redirect(
-        `${process.env.API_BASE_URL}/registration/failed?reason=verification_failed`,
+        `https://cafesync.online/registration/failed?reason=verification_failed`,
       );
     }
 
@@ -994,7 +1018,7 @@ exports.esewaSuccess = async (req, res) => {
     });
 
     return res.redirect(
-      `${process.env.API_BASE_URL}/registration/success?hotel=${encodeURIComponent(
+      `https://cafesync.online/registration/success?hotel=${encodeURIComponent(
         hotel.hotel_slug,
       )}`,
     );
@@ -1022,7 +1046,7 @@ exports.esewaFailure = async (req, res) => {
     }
 
     return res.redirect(
-      `${process.env.API_BASE_URL}/registration/failed`,
+      `https://cafesync.online/registration/failed`,
     );
   } catch (error) {
     console.error("esewaFailure error:", error);
