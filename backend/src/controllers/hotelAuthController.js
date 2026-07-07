@@ -1714,44 +1714,52 @@ exports.upgradeDowngradeBilling = async (req, res, next) => {
 
     const invoiceNumber = subGenerateInvoiceNumber();
     const transactionUuid = uuidv4();
-    const tax_amount = (amount/100)*13;
-    const total_amount = amount+tax_amount;
-    const invoiceResult = await client.query(
-      `
-      INSERT INTO subscription_invoices (
-        hotel_id,
-        subscription_plan_id,
-        invoice_number,
-        amount,
-        tax_amount,
-        total_amount,
-        billing_period_start,
-        billing_period_end,
-        due_date,
-        status,
-        payment_method,
-        transaction_id
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6, $7::date, $8::date, $9::date,
-        'pending',$10,$11
-      )
-      RETURNING *
-      `,
-      [
-        hotel.id,
-        newPlan.id,
-        invoiceNumber,
-        amount,
-        tax_amount,
-        total_amount,
-        subDateOnly(billingPeriodStart),
-        subDateOnly(billingPeriodEnd),
-        subDateOnly(now),
-        paymentMethod,
-        transactionUuid,
-      ],
-    );
+    const tax_amount = amount * 0.13;
+const total_amount = amount + tax_amount;
+
+const invoiceResult = await client.query(
+  `
+  INSERT INTO subscription_invoices (
+    hotel_id,
+    subscription_plan_id,
+    invoice_number,
+    billing_cycle,
+    amount,
+    tax_amount,
+    total_amount,
+    billing_period_start,
+    billing_period_end,
+    due_date,
+    status,
+    payment_method,
+    transaction_id,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    $1, $2, $3, $4, $5, $6, $7,
+    $8::date, $9::date, $10::date,
+    'pending', $11, $12,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+  )
+  RETURNING *
+  `,
+  [
+    hotel.id,
+    newPlan.id,
+    invoiceNumber,
+    billingCycle,
+    amount,
+    tax_amount,
+    total_amount,
+    subDateOnly(billingPeriodStart),
+    subDateOnly(billingPeriodEnd),
+    subDateOnly(now),
+    paymentMethod,
+    transactionUuid,
+  ],
+);
     console.log(total_amount)
     const invoice = invoiceResult.rows[0];
 
@@ -1773,22 +1781,22 @@ exports.upgradeDowngradeBilling = async (req, res, next) => {
       });
     }
 
-    return successResponse(res, 200, "Subscription payment initiated", {
-      change_type: changeType,
-      days_remaining: daysRemaining,
-      current_plan_id: hotel.subscription_plan_id,
-      selected_plan_id: newPlan.id,
-      billing_cycle: billingCycle,
-      payment_method: paymentMethod,
-      amount,
-      tax_amount: 0,
-      total_amount: total_amount,
-      billing_period_start: subDateOnly(billingPeriodStart),
-      billing_period_end: subDateOnly(billingPeriodEnd),
-      invoice,
-      payment_url: paymentInit?.payment_url || null,
-      form_fields: paymentInit?.form_fields || null,
-    });
+return successResponse(res, 200, "Subscription payment initiated", {
+  change_type: changeType,
+  days_remaining: daysRemaining,
+  current_plan_id: hotel.subscription_plan_id,
+  selected_plan_id: newPlan.id,
+  billing_cycle: billingCycle,
+  payment_method: paymentMethod,
+  amount,
+  tax_amount,
+  total_amount,
+  billing_period_start: subDateOnly(billingPeriodStart),
+  billing_period_end: subDateOnly(billingPeriodEnd),
+  invoice,
+  payment_url: paymentInit?.payment_url || null,
+  form_fields: paymentInit?.form_fields || null,
+});
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("upgradeDowngradeBilling error:", error);
