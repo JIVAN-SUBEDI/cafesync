@@ -1915,7 +1915,44 @@ exports.getSingleSubscriptionInvoice = async (req, res, next) => {
 // ===============================
 // KHALTI SUBSCRIPTION CALLBACK
 // ===============================
+const FRONTEND_URL = process.env.FRONTEND_PUBLIC_URL || "https://cafesync.online";
 
+function subscriptionPageUrl(hotelSlug, params = {}) {
+  const query = new URLSearchParams(params).toString();
+
+  if (!hotelSlug) {
+    return `${FRONTEND_URL}/subscription/failed${query ? `?${query}` : ""}`;
+  }
+
+  return `${FRONTEND_URL}/hotel/${encodeURIComponent(
+    hotelSlug
+  )}/subscription${query ? `?${query}` : ""}`;
+}
+
+function moneyToPaisaa(value) {
+  return Math.round(Number(value || 0) * 100);
+}
+
+async function getSubscriptionInvoiceByTransaction(transactionId) {
+  const invoiceResult = await db.query(
+    `
+    SELECT
+      si.*,
+      h.hotel_slug
+    FROM subscription_invoices si
+    INNER JOIN hotels h ON h.id = si.hotel_id
+    WHERE si.transaction_id = $1
+    LIMIT 1
+    `,
+    [transactionId]
+  );
+
+  return invoiceResult.rows[0] || null;
+}
+
+// ===============================
+// KHALTI SUBSCRIPTION CALLBACK
+// ===============================
 exports.subscriptionKhaltiCallback = async (req, res) => {
   try {
     const { pidx } = req.query;
@@ -1935,27 +1972,17 @@ exports.subscriptionKhaltiCallback = async (req, res) => {
           Authorization: `Key ${process.env.KHALTI_SECRET_KEY}`,
           "Content-Type": "application/json",
         },
-      },
+      }
     );
 
     const verifyData = verifyResponse.data || {};
     const { status, total_amount, transaction_id } = verifyData;
 
-    const invoiceResult = await db.query(
-      `
-      SELECT *
-      FROM subscription_invoices
-      WHERE transaction_id = $1
-      LIMIT 1
-      `,
-      [pidx],
-    );
-
-    const invoice = invoiceResult.rows[0];
+    const invoice = await getSubscriptionInvoiceByTransaction(pidx);
 
     if (!invoice) {
       return res.redirect(
-        `https://cafesync.online/subscription/failed?reason=invoice_not_found`,
+        `${FRONTEND_URL}/subscription/failed?reason=invoice_not_found`
       );
     }
 
@@ -1966,32 +1993,37 @@ exports.subscriptionKhaltiCallback = async (req, res) => {
         SET status = 'cancelled'
         WHERE id = $1
         `,
-        [invoice.id],
+        [invoice.id]
       );
 
       return res.redirect(
-        `https://cafesync.online/subscription/failed?reason=${encodeURIComponent(
-          status || "payment_failed",
-        )}`,
+        subscriptionPageUrl(invoice.hotel_slug, {
+          payment: "failed",
+          reason: status || "payment_failed",
+          invoice: invoice.invoice_number,
+        })
       );
     }
-    // console.log(paidAmount)
-    // console.log(expectedAmount)
-    const expectedAmount = Number(invoice.total_amount || 0);
-    const paidAmount = Number(total_amount || 0) / 100;
 
-    if (expectedAmount && paidAmount !== expectedAmount) {
+    const expectedPaisaa = moneyToPaisaa(invoice.total_amount);
+    const paidPaisaa = Number(total_amount || 0);
+
+    if (expectedPaisaa && paidPaisaa !== expectedPaisaa) {
       await db.query(
         `
         UPDATE subscription_invoices
         SET status = 'cancelled'
         WHERE id = $1
         `,
-        [invoice.id],
+        [invoice.id]
       );
 
       return res.redirect(
-        `https://cafesync.online/subscription/failed?reason=amount_mismatch`,
+        subscriptionPageUrl(invoice.hotel_slug, {
+          payment: "failed",
+          reason: "amount_mismatch",
+          invoice: invoice.invoice_number,
+        })
       );
     }
 
@@ -2002,9 +2034,10 @@ exports.subscriptionKhaltiCallback = async (req, res) => {
     });
 
     return res.redirect(
-      `https://cafesync.online//subscription/success?invoice=${encodeURIComponent(
-        paidInvoice.invoice_number,
-      )}`,
+      subscriptionPageUrl(invoice.hotel_slug, {
+        payment: "success",
+        invoice: paidInvoice.invoice_number,
+      })
     );
   } catch (error) {
     console.error("subscriptionKhaltiCallback error:", error);
@@ -2020,7 +2053,6 @@ exports.subscriptionKhaltiCallback = async (req, res) => {
 // ===============================
 // ESEWA SUBSCRIPTION SUCCESS
 // ===============================
-
 exports.subscriptionEsewaSuccess = async (req, res) => {
   try {
     const { data } = req.query;
@@ -2046,21 +2078,11 @@ exports.subscriptionEsewaSuccess = async (req, res) => {
       });
     }
 
-    const invoiceResult = await db.query(
-      `
-      SELECT *
-      FROM subscription_invoices
-      WHERE transaction_id = $1
-      LIMIT 1
-      `,
-      [transactionUuid],
-    );
-
-    const invoice = invoiceResult.rows[0];
+    const invoice = await getSubscriptionInvoiceByTransaction(transactionUuid);
 
     if (!invoice) {
       return res.redirect(
-        `https://cafesync.online/subscription/failed?reason=invoice_not_found`,
+        `${FRONTEND_URL}/subscription/failed?reason=invoice_not_found`
       );
     }
 
@@ -2071,11 +2093,15 @@ exports.subscriptionEsewaSuccess = async (req, res) => {
         SET status = 'cancelled'
         WHERE id = $1
         `,
-        [invoice.id],
+        [invoice.id]
       );
 
       return res.redirect(
-        `https://cafesync.online/subscription/failed?reason=payment_not_complete`,
+        subscriptionPageUrl(invoice.hotel_slug, {
+          payment: "failed",
+          reason: "payment_not_complete",
+          invoice: invoice.invoice_number,
+        })
       );
     }
 
@@ -2101,24 +2127,33 @@ exports.subscriptionEsewaSuccess = async (req, res) => {
 
     if (verifyData.status !== "COMPLETE") {
       return res.redirect(
-        `https://cafesync.online/subscription/failed?reason=verification_failed`,
+        subscriptionPageUrl(invoice.hotel_slug, {
+          payment: "failed",
+          reason: "verification_failed",
+          invoice: invoice.invoice_number,
+        })
       );
     }
 
-    const expectedAmount = Number(invoice.total_amount || 0);
+    const expectedPaisaa = moneyToPaisaa(invoice.total_amount);
+    const paidPaisaa = moneyToPaisaa(totalAmount);
 
-    if (expectedAmount && totalAmount !== expectedAmount) {
+    if (expectedPaisaa && paidPaisaa !== expectedPaisaa) {
       await db.query(
         `
         UPDATE subscription_invoices
         SET status = 'cancelled'
         WHERE id = $1
         `,
-        [invoice.id],
+        [invoice.id]
       );
 
       return res.redirect(
-        `${process.env.API_BASE_URL}/subscription/failed?reason=amount_mismatch`,
+        subscriptionPageUrl(invoice.hotel_slug, {
+          payment: "failed",
+          reason: "amount_mismatch",
+          invoice: invoice.invoice_number,
+        })
       );
     }
 
@@ -2129,9 +2164,10 @@ exports.subscriptionEsewaSuccess = async (req, res) => {
     });
 
     return res.redirect(
-      `https://cafesync.online/subscription/success?invoice=${encodeURIComponent(
-        paidInvoice.invoice_number,
-      )}`,
+      subscriptionPageUrl(invoice.hotel_slug, {
+        payment: "success",
+        invoice: paidInvoice.invoice_number,
+      })
     );
   } catch (error) {
     console.error("subscriptionEsewaSuccess error:", error);
@@ -2147,23 +2183,41 @@ exports.subscriptionEsewaSuccess = async (req, res) => {
 // ===============================
 // ESEWA SUBSCRIPTION FAILURE
 // ===============================
-
 exports.subscriptionEsewaFailure = async (req, res) => {
   try {
     const { transaction_uuid } = req.query;
 
-    if (transaction_uuid) {
-      await db.query(
-        `
-        UPDATE subscription_invoices
-        SET status = 'cancelled'
-        WHERE transaction_id = $1 AND status = 'pending'
-        `,
-        [transaction_uuid],
+    if (!transaction_uuid) {
+      return res.redirect(
+        `${FRONTEND_URL}/subscription/failed?reason=missing_transaction_uuid`
       );
     }
 
-    return res.redirect(`${process.env.API_BASE_URL}/subscription/failed`);
+    const invoice = await getSubscriptionInvoiceByTransaction(transaction_uuid);
+
+    if (!invoice) {
+      return res.redirect(
+        `${FRONTEND_URL}/subscription/failed?reason=invoice_not_found`
+      );
+    }
+
+    await db.query(
+      `
+      UPDATE subscription_invoices
+      SET status = 'cancelled'
+      WHERE transaction_id = $1
+        AND status = 'pending'
+      `,
+      [transaction_uuid]
+    );
+
+    return res.redirect(
+      subscriptionPageUrl(invoice.hotel_slug, {
+        payment: "failed",
+        reason: "payment_cancelled",
+        invoice: invoice.invoice_number,
+      })
+    );
   } catch (error) {
     console.error("subscriptionEsewaFailure error:", error);
     return errorResponse(res, 500, "Payment failure handling failed");
