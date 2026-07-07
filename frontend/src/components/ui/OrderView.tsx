@@ -403,18 +403,7 @@ export default function OrdersView({ hotelSlug,currencySymbol }: OrdersViewProps
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                    <button 
-  onClick={() => {
-    setEditingOrder({
-      ...order,
-      items: Array.isArray(order.order_items) ? order.order_items : [],
-    })
-    setShowOrderModal(true)
-  }}
-  className="p-1.5 text-gray-600 hover:bg-gray-100 rounded"
->
-  <Edit className="h-4 w-4" />
-</button>
+
                       <button 
                         onClick={() => {
                           setSelectedOrder(order)
