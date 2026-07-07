@@ -128,6 +128,100 @@ function normalizeBillingCycle(value) {
   return v === "yearly" ? "yearly" : "monthly";
 }
 
+
+async function createHotelFromRegistration({
+  client,
+  payload,
+  plan,
+  paymentStatus = "paid",
+  subscriptionStatus = "active",
+}) {
+  const now = new Date();
+
+  let subscriptionStartDate = null;
+  let subscriptionEndDate = null;
+  let trialStartsAt = null;
+  let trialEndsAt = null;
+
+  if (payload.registration_type === "trial") {
+    trialStartsAt = now;
+    trialEndsAt = new Date(now);
+    trialEndsAt.setDate(trialEndsAt.getDate() + 30);
+  } else {
+    subscriptionStartDate = now;
+    subscriptionEndDate = new Date(now);
+
+    if ((payload.billing_cycle || "monthly") === "yearly") {
+      subscriptionEndDate.setFullYear(subscriptionEndDate.getFullYear() + 1);
+    } else {
+      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
+    }
+  }
+
+  return Hotel.createHotelWithSubscription(
+    {
+      hotel_name: payload.hotel_name,
+      hotel_slug: payload.hotel_slug,
+      hotel_img: payload.hotel_img || null,
+      hotel_phone: payload.hotel_phone || null,
+      hotel_address: payload.hotel_address || null,
+      city: payload.city || null,
+      country: payload.country || "Nepal",
+      timezone: payload.timezone || "Asia/Kathmandu",
+      currency: payload.currency || "NPR",
+      tax_rate: Number(payload.tax_rate || 10),
+      service_charge: Number(payload.service_charge || 5),
+
+      subscription_plan_id: payload.subscription_plan_id || null,
+      billing_cycle:
+        payload.registration_type === "trial"
+          ? "monthly"
+          : payload.billing_cycle || "monthly",
+      registration_type: payload.registration_type,
+      subscription_status: subscriptionStatus,
+      payment_status: paymentStatus,
+
+      subscription_start_date: subscriptionStartDate,
+      subscription_end_date: subscriptionEndDate,
+      trial_starts_at: trialStartsAt,
+      trial_ends_at: trialEndsAt,
+
+      max_staff_allowed: plan?.max_staff || 5,
+      max_tables_allowed: plan?.max_tables || 20,
+      max_menu_items_allowed: plan?.max_menu_items || 100,
+
+      is_active: true,
+      is_verified: true,
+      accept_marketing: !!payload.accept_marketing,
+    },
+    client,
+  );
+}
+async function createHotelAndOwner({
+  client,
+  payload,
+  plan,
+  paymentStatus,
+  subscriptionStatus,
+  passwordHash,
+}) {
+  const hotel = await createHotelFromRegistration({
+    client,
+    payload,
+    plan,
+    paymentStatus,
+    subscriptionStatus,
+  });
+
+  const owner = await createHotelOwnerUser({
+    client,
+    hotel,
+    pendingOrPayload: payload,
+    passwordHash,
+  });
+
+  return { hotel, owner };
+}
 async function createHotelOwnerUser({
   client,
   hotel,
