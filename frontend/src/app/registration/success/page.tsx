@@ -21,7 +21,7 @@ export default async function RegistrationSuccessPage({
       type="success"
       title="Payment Successful"
       message={message}
-      redirectTo="/login"
+      redirectTo="/"
       redirectLabel="Go to Login Now"
       countdownStart={5}
     />
