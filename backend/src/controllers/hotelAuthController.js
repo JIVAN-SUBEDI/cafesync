@@ -1396,8 +1396,8 @@ async function subInitiateEsewaSubscriptionPayment({
 
   const transactionUuid = String(invoice.transaction_id);
 
-  const successUrl = `${process.env.BACKEND_PUBLIC_URL}/api/hotel/subscription/payment/esewa/success`;
-  const failureUrl = `${process.env.BACKEND_PUBLIC_URL}/api/hotel/subscription/payment/esewa/failure`;
+  const successUrl = `https://api.cafesync.online/api/hotel/subscription/payment/esewa/success`;
+  const failureUrl = `https://api.cafesync.online/api/hotel/subscription/payment/esewa/failure`;
 
   const signedFieldNames = "total_amount,transaction_uuid,product_code";
 
@@ -1430,8 +1430,8 @@ async function subInitiateKhaltiSubscriptionPayment({ invoice, amount, plan }) {
       ? "https://khalti.com/api/v2"
       : "https://dev.khalti.com/api/v2";
 
-  const returnUrl = `${process.env.BACKEND_PUBLIC_URL}/api/hotel/subscription/payment/khalti/callback`;
-  const websiteUrl = process.env.BACKEND_PUBLIC_URL;
+  const returnUrl = `https://api.cafesync.online/api/hotel/subscription/payment/khalti/callback`;
+  const websiteUrl = `https://api.cafesync.online`;
   console.log(amount)
   const response = await axios.post(
     `${baseUrl}/epayment/initiate/`,
@@ -1955,7 +1955,7 @@ exports.subscriptionKhaltiCallback = async (req, res) => {
 
     if (!invoice) {
       return res.redirect(
-        `${process.env.API_BASE_URL}/subscription/failed?reason=invoice_not_found`,
+        `https://cafesync.online/subscription/failed?reason=invoice_not_found`,
       );
     }
 
@@ -1970,7 +1970,7 @@ exports.subscriptionKhaltiCallback = async (req, res) => {
       );
 
       return res.redirect(
-        `${process.env.API_BASE_URL}/subscription/failed?reason=${encodeURIComponent(
+        `https://cafesync.online/subscription/failed?reason=${encodeURIComponent(
           status || "payment_failed",
         )}`,
       );
@@ -1991,7 +1991,7 @@ exports.subscriptionKhaltiCallback = async (req, res) => {
       );
 
       return res.redirect(
-        `${process.env.API_BASE_URL}/subscription/failed?reason=amount_mismatch`,
+        `https://cafesync.online/subscription/failed?reason=amount_mismatch`,
       );
     }
 
@@ -2002,7 +2002,7 @@ exports.subscriptionKhaltiCallback = async (req, res) => {
     });
 
     return res.redirect(
-      `${process.env.API_BASE_URL}//subscription/success?invoice=${encodeURIComponent(
+      `https://cafesync.online//subscription/success?invoice=${encodeURIComponent(
         paidInvoice.invoice_number,
       )}`,
     );
@@ -2060,7 +2060,7 @@ exports.subscriptionEsewaSuccess = async (req, res) => {
 
     if (!invoice) {
       return res.redirect(
-        `${process.env.API_BASE_URL}/subscription/failed?reason=invoice_not_found`,
+        `https://cafesync.online/subscription/failed?reason=invoice_not_found`,
       );
     }
 
@@ -2075,7 +2075,7 @@ exports.subscriptionEsewaSuccess = async (req, res) => {
       );
 
       return res.redirect(
-        `${process.env.API_BASE_URL}/subscription/failed?reason=payment_not_complete`,
+        `https://cafesync.online/subscription/failed?reason=payment_not_complete`,
       );
     }
 
@@ -2101,7 +2101,7 @@ exports.subscriptionEsewaSuccess = async (req, res) => {
 
     if (verifyData.status !== "COMPLETE") {
       return res.redirect(
-        `${process.env.API_BASE_URL}/subscription/failed?reason=verification_failed`,
+        `https://cafesync.online/subscription/failed?reason=verification_failed`,
       );
     }
 
@@ -2129,7 +2129,7 @@ exports.subscriptionEsewaSuccess = async (req, res) => {
     });
 
     return res.redirect(
-      `${process.env.API_BASE_URL}/subscription/success?invoice=${encodeURIComponent(
+      `https://cafesync.online/subscription/success?invoice=${encodeURIComponent(
         paidInvoice.invoice_number,
       )}`,
     );
