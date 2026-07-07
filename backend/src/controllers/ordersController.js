@@ -76,7 +76,9 @@ exports.getAllOrders = async (req, res, next) => {
     ) as order_items
   FROM orders o
   LEFT JOIN hotel_tables t ON o.table_id = t.id
-  LEFT JOIN staff s ON o.waiter_id = s.id
+  LEFT JOIN users s 
+  ON o.waiter_id = s.id 
+  AND s.hotel_id = o.hotel_id
   LEFT JOIN order_items oi ON o.id = oi.order_id
   LEFT JOIN menu_items mi ON oi.menu_item_id = mi.id
   WHERE o.hotel_id = $1
@@ -279,7 +281,9 @@ exports.getOrderById = async (req, res, next) => {
         s.full_name as waiter_name
       FROM orders o
       LEFT JOIN hotel_tables t ON o.table_id = t.id
-      LEFT JOIN staff s ON o.waiter_id = s.id
+      LEFT JOIN users s 
+  ON o.waiter_id = s.id 
+  AND s.hotel_id = o.hotel_id
       WHERE o.id = $1 AND o.hotel_id = $2
       `,
       [id, hotelId],
@@ -784,7 +788,7 @@ exports.updateOrder = async (req, res, next) => {
     if (waiter_id !== undefined && waiter_id !== null && orderStatus !== "cancelled") {
       const waiterCheck = await client.query(
         `SELECT id
-         FROM staff
+         FROM Users
          WHERE id = $1 AND hotel_id = $2 AND role IN ('waiter', 'manager')`,
         [waiter_id, hotelId]
       );
@@ -1945,76 +1949,7 @@ exports.getKitchenOrders = async (req, res, next) => {
   }
 };
 
-/* =========================
-   UPDATE KITCHEN ITEM STATUS
-   PUT /api/hotel/kitchen/orders/:orderId/items/:itemId/status
-========================= */
-// exports.updateKitchenItemStatus = async (req, res, next) => {
-//   try {
-//     const hotelId = req.hotelId;
-//     const { orderId, itemId } = req.params;
-//     const { status, prepared_by } = req.body;
 
-//     if (!status) return errorResponse(res, 400, "Status is required");
-
-//     const validItemStatuses = [
-//       "pending",
-//       "preparing",
-//       "ready",
-//       "served",
-//       "cancelled",
-//     ];
-//     if (!validItemStatuses.includes(status)) {
-//       return errorResponse(res, 400, "Invalid item status");
-//     }
-
-//     const orderCheck = await db.query(
-//       `SELECT id FROM orders WHERE id = $1 AND hotel_id = $2`,
-//       [orderId, hotelId],
-//     );
-//     if (orderCheck.rows.length === 0)
-//       return errorResponse(res, 404, "Order not found");
-
-//     const existing = await db.query(
-//       `SELECT id, status FROM order_items WHERE id = $1 AND order_id = $2`,
-//       [itemId, orderId],
-//     );
-//     if (existing.rows.length === 0)
-//       return errorResponse(res, 404, "Order item not found");
-
-//     if (prepared_by) {
-//       const staffCheck = await db.query(
-//         `SELECT id FROM staff WHERE id = $1 AND hotel_id = $2`,
-//         [prepared_by, hotelId],
-//       );
-//       if (staffCheck.rows.length === 0)
-//         return errorResponse(res, 404, "Staff not found");
-//     }
-
-//     const updated = await db.query(
-//       `
-//       UPDATE order_items
-//       SET
-//         status = $1,
-//         prepared_by = COALESCE($2, prepared_by),
-//         prepared_at = CASE WHEN $1 IN ('preparing','ready') THEN CURRENT_TIMESTAMP ELSE prepared_at END,
-//         served_at = CASE WHEN $1 = 'served' THEN CURRENT_TIMESTAMP ELSE served_at END
-//       WHERE id = $3 AND order_id = $4
-//       RETURNING *
-//       `,
-//       [status, prepared_by || null, itemId, orderId],
-//     );
-
-//     res.json({
-//       success: true,
-//       message: "Kitchen item status updated successfully",
-//       item: updated.rows[0],
-//     });
-//   } catch (error) {
-//     console.error("Update kitchen item status error:", error);
-//     next(error);
-//   }
-// };
 exports.getAnalytics = async (req, res, next) => {
   try {
     const hotelId = req.hotelId || req.hotel?.id;
