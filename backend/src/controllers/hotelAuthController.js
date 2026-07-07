@@ -128,144 +128,70 @@ function normalizeBillingCycle(value) {
   return v === "yearly" ? "yearly" : "monthly";
 }
 
-// FIX: use the real primary key of hotels table before inserting into users
-function getCreatedHotelId(hotel) {
-  const hotelId = hotel?.id || hotel?.hotel_id;
-
-  if (!hotelId) {
-    console.log("Hotel returned from createHotelWithSubscription:", hotel);
-    throw new Error("Hotel creation did not return hotels.id");
-  }
-
-  return hotelId;
-}
-
 async function createHotelOwnerUser({
   client,
   hotel,
   pendingOrPayload,
   passwordHash,
 }) {
-  const hotelId = getCreatedHotelId(hotel);
-
-  // Optional safety check: confirms this hotel exists inside same transaction
-  const hotelCheck = await client.query(
-    `SELECT id FROM hotels WHERE id = $1 LIMIT 1`,
-    [hotelId],
-  );
-
-  if (!hotelCheck.rows[0]) {
-    throw new Error(`Created hotel not found before user insert: ${hotelId}`);
+  if (!client) {
+    throw new Error("Transaction client missing");
   }
 
-  return User.create(
-    {
-      hotel_id: hotelId,
-      full_name: pendingOrPayload.admin_name,
-      email: pendingOrPayload.admin_email,
-      phone_number: pendingOrPayload.admin_phone || null,
-      password_hash: passwordHash,
-      role: "hotel_admin",
-      is_active: true,
-      is_email_verified: true,
-    },
-    client,
-  );
-}
-
-async function createHotelFromRegistration({
-  client,
-  payload,
-  plan,
-  paymentStatus = "paid",
-  subscriptionStatus = "active",
-}) {
-  const now = new Date();
-
-  let subscriptionStartDate = null;
-  let subscriptionEndDate = null;
-  let trialStartsAt = null;
-  let trialEndsAt = null;
-
-  if (payload.registration_type === "trial") {
-    trialStartsAt = now;
-    trialEndsAt = new Date(now);
-    trialEndsAt.setDate(trialEndsAt.getDate() + 30);
-  } else {
-    subscriptionStartDate = now;
-    subscriptionEndDate = new Date(now);
-
-    if ((payload.billing_cycle || "monthly") === "yearly") {
-      subscriptionEndDate.setFullYear(subscriptionEndDate.getFullYear() + 1);
-    } else {
-      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
-    }
+  if (!hotel?.id) {
+    console.log("Hotel row missing id:", hotel);
+    throw new Error("Hotel id missing before creating owner user");
   }
 
-  return Hotel.createHotelWithSubscription(
-    {
-      hotel_name: payload.hotel_name,
-      hotel_slug: payload.hotel_slug,
-      hotel_img: payload.hotel_img || null,
-      hotel_phone: payload.hotel_phone || null,
-      hotel_address: payload.hotel_address || null,
-      city: payload.city || null,
-      country: payload.country || "Nepal",
-      timezone: payload.timezone || "Asia/Kathmandu",
-      currency: payload.currency || "NPR",
-      tax_rate: Number(payload.tax_rate || 10),
-      service_charge: Number(payload.service_charge || 5),
-
-      subscription_plan_id: payload.subscription_plan_id || null,
-      billing_cycle:
-        payload.registration_type === "trial"
-          ? "monthly"
-          : payload.billing_cycle || "monthly",
-      registration_type: payload.registration_type,
-      subscription_status: subscriptionStatus,
-      payment_status: paymentStatus,
-
-      subscription_start_date: subscriptionStartDate,
-      subscription_end_date: subscriptionEndDate,
-      trial_starts_at: trialStartsAt,
-      trial_ends_at: trialEndsAt,
-
-      max_staff_allowed: plan?.max_staff || 5,
-      max_tables_allowed: plan?.max_tables || 20,
-      max_menu_items_allowed: plan?.max_menu_items || 100,
-
-      is_active: true,
-      is_verified: true,
-      accept_marketing: !!payload.accept_marketing,
-    },
-    client,
+  // Check if admin already exists for this hotel/email
+  const existingUserResult = await client.query(
+    `
+    SELECT *
+    FROM users
+    WHERE hotel_id = $1
+      AND LOWER(email) = LOWER($2)
+    LIMIT 1
+    `,
+    [hotel.id, pendingOrPayload.admin_email],
   );
-}
-async function createHotelAndOwner({
-  client,
-  payload,
-  plan,
-  paymentStatus,
-  subscriptionStatus,
-  passwordHash,
-}) {
-  const hotel = await createHotelFromRegistration({
-    client,
-    payload,
-    plan,
-    paymentStatus,
-    subscriptionStatus,
-  });
 
-  const owner = await createHotelOwnerUser({
-    client,
-    hotel,
-    pendingOrPayload: payload,
-    passwordHash,
-  });
+  if (existingUserResult.rows[0]) {
+    return existingUserResult.rows[0];
+  }
 
-  return { hotel, owner };
+  const userResult = await client.query(
+    `
+    INSERT INTO users (
+      hotel_id,
+      full_name,
+      email,
+      phone_number,
+      password_hash,
+      role,
+      is_active,
+      is_email_verified,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      $1, $2, $3, $4, $5, 'hotel_admin', true, true,
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    )
+    RETURNING *
+    `,
+    [
+      hotel.id,
+      pendingOrPayload.admin_name,
+      pendingOrPayload.admin_email,
+      pendingOrPayload.admin_phone || null,
+      passwordHash,
+    ],
+  );
+
+  return userResult.rows[0];
 }
+
 async function finalizePendingRegistrationToHotel({
   pending,
   plan,
@@ -301,13 +227,46 @@ async function finalizePendingRegistrationToHotel({
       recovery_email: pending.recovery_email || null,
     };
 
-    const hotel = await createHotelFromRegistration({
-      client,
-      payload,
-      plan,
-      paymentStatus,
-      subscriptionStatus: "active",
-    });
+    // Check if hotel already exists because Khalti/eSewa callback can be hit again
+    let hotelResult = await client.query(
+      `
+      SELECT *
+      FROM hotels
+      WHERE hotel_slug = $1
+      LIMIT 1
+      `,
+      [payload.hotel_slug],
+    );
+
+    let hotel = hotelResult.rows[0];
+
+    // Create hotel only if it does not already exist
+    if (!hotel) {
+      await createHotelFromRegistration({
+        client,
+        payload,
+        plan,
+        paymentStatus,
+        subscriptionStatus: "active",
+      });
+
+      // Do not trust model return. Fetch the actual hotel row from DB.
+      hotelResult = await client.query(
+        `
+        SELECT *
+        FROM hotels
+        WHERE hotel_slug = $1
+        LIMIT 1
+        `,
+        [payload.hotel_slug],
+      );
+
+      hotel = hotelResult.rows[0];
+    }
+
+    if (!hotel) {
+      throw new Error(`Hotel was not created/found for slug: ${payload.hotel_slug}`);
+    }
 
     const owner = await createHotelOwnerUser({
       client,
@@ -316,13 +275,33 @@ async function finalizePendingRegistrationToHotel({
       passwordHash: pending.admin_password_hash,
     });
 
-    await PendingRegistration.delete(pending.id, client);
+    await client.query(
+      `
+      UPDATE pending_registrations
+      SET
+        payment_status = 'paid',
+        paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP),
+        completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP)
+      WHERE id = $1
+      `,
+      [pending.id],
+    );
+
+    // Delete only after everything succeeds
+    await client.query(
+      `
+      DELETE FROM pending_registrations
+      WHERE id = $1
+      `,
+      [pending.id],
+    );
 
     await client.query("COMMIT");
 
     return { hotel, owner };
   } catch (error) {
-    await client.query("ROLLBACK");
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("FINALIZE REGISTRATION ERROR:", error);
     throw error;
   } finally {
     client.release();
