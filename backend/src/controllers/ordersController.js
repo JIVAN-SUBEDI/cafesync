@@ -965,20 +965,23 @@ exports.updateOrderStatus = async (req, res, next) => {
     // GET EXISTING ORDER
     // ===============================
     const existing = await db.query(
-      `SELECT id, table_id, status 
-       FROM orders 
-       WHERE id = $1 AND hotel_id = $2`,
-      [id, hotelId],
+      `
+      SELECT id, table_id, status
+      FROM orders
+      WHERE id = $1 AND hotel_id = $2
+      `,
+      [id, hotelId]
     );
 
     if (existing.rows.length === 0) {
       return errorResponse(res, 404, "Order not found");
     }
 
-    const tableId = existing.rows[0].table_id;
+    const order = existing.rows[0];
+    const tableId = order.table_id;
 
     // ===============================
-    // UPDATE ORDER
+    // UPDATE ORDER STATUS
     // ===============================
     const updated = await db.query(
       `
@@ -998,86 +1001,162 @@ exports.updateOrderStatus = async (req, res, next) => {
       WHERE id = $1 AND hotel_id = $2
       RETURNING *
       `,
-      [id, hotelId, status],
+      [id, hotelId, status]
     );
 
     // ===============================
-    // FREE TABLE (if needed)
+    // UPDATE ALL ORDER ITEMS STATUS
+    // When order is ready, all items also become ready
+    // ===============================
+    if (status === "ready") {
+      await db.query(
+        `
+        UPDATE order_items
+        SET status = 'ready',
+            prepared_at = COALESCE(prepared_at, CURRENT_TIMESTAMP)
+        WHERE order_id = $1
+          AND status != 'cancelled'
+        `,
+        [id]
+      );
+    }
+
+    // Optional: when order is preparing, pending items become preparing
+    if (status === "preparing") {
+      await db.query(
+        `
+        UPDATE order_items
+        SET status = 'preparing'
+        WHERE order_id = $1
+          AND status = 'pending'
+        `,
+        [id]
+      );
+    }
+
+    // Optional: when order is cancelled, all non-ready/non-served items become cancelled
+    if (status === "cancelled") {
+      await db.query(
+        `
+        UPDATE order_items
+        SET status = 'cancelled'
+        WHERE order_id = $1
+          AND status NOT IN ('ready', 'served')
+        `,
+        [id]
+      );
+    }
+
+    // Optional: when order is served, ready items become served
+    if (status === "served") {
+      await db.query(
+        `
+        UPDATE order_items
+        SET status = 'served',
+            served_at = COALESCE(served_at, CURRENT_TIMESTAMP)
+        WHERE order_id = $1
+          AND status = 'ready'
+        `,
+        [id]
+      );
+    }
+
+    // ===============================
+    // FREE TABLE
+    // Only completed or cancelled should make table available
+    // Ready should NOT free table
     // ===============================
     if (tableId && (status === "completed" || status === "cancelled")) {
       await db.query(
         `
-        UPDATE hotel_tables 
-        SET status = 'available', updated_at = CURRENT_TIMESTAMP 
+        UPDATE hotel_tables
+        SET status = 'available',
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = $1 AND hotel_id = $2
         `,
-        [tableId, hotelId],
+        [tableId, hotelId]
       );
     }
 
     // ===============================
     // SOCKET REALTIME UPDATE
     // ===============================
-    req.app.get("io").to(`hotel:${hotelId}`).emit("order:status", {
-      orderId: existing.rows[0].id,
-      status,
-    });
+    const io = req.app.get("io");
+
+    if (io) {
+      io.to(`hotel:${hotelId}`).emit("order:status", {
+        orderId: order.id,
+        status,
+      });
+
+      io.to(`hotel:${hotelId}`).emit("order:items_status", {
+        orderId: order.id,
+        status,
+      });
+    }
 
     // ===============================
-    // FCM NOTIFICATION (STAFF + WAITER)
+    // FCM NOTIFICATION TO WAITERS
+    // When kitchen marks order ready
     // ===============================
     if (status === "ready") {
-      console.log("tesr")
-      // get table name
       let tableName = "Table";
+
       if (tableId) {
         const tableInfo = await db.query(
-          `SELECT table_name FROM hotel_tables WHERE id = $1 AND hotel_id = $2`,
-          [tableId, hotelId],
+          `
+          SELECT table_name, table_number
+          FROM hotel_tables
+          WHERE id = $1 AND hotel_id = $2
+          `,
+          [tableId, hotelId]
         );
 
-        tableName = tableInfo.rows[0]?.table_name || "Table";
+        tableName =
+          tableInfo.rows[0]?.table_name ||
+          tableInfo.rows[0]?.table_number ||
+          "Table";
       }
 
-      // get staff + waiter users
       const users = await db.query(
         `
-        SELECT id 
-        FROM users 
-        WHERE hotel_id = $1 
-        AND role ='waiter'
+        SELECT id
+        FROM users
+        WHERE hotel_id = $1
+          AND role = 'waiter'
+          AND is_active = true
         `,
-        [hotelId],
+        [hotelId]
       );
 
-      const userIds = users.rows.map(u => u.id);
+      const userIds = users.rows.map((u) => u.id);
 
-      // send notification
-      await NotificationService.sendToUsers(userIds, {
-        title: "Order Ready",
-        body: `Order of ${tableName} is ready to be served`,
-        data: {
-          orderId: id,
-          tableId,
-          status: "ready",
-        },
-      });
+      if (userIds.length > 0) {
+        await NotificationService.sendToUsers(userIds, {
+          title: "Order Ready",
+          body: `Order of ${tableName} is ready to be served`,
+          data: {
+            orderId: String(id),
+            tableId: tableId ? String(tableId) : "",
+            status: "ready",
+          },
+        });
+      }
     }
 
     // ===============================
     // RESPONSE
     // ===============================
-    res.json({
+    return res.json({
       success: true,
       message: "Order status updated successfully",
       order: updated.rows[0],
     });
-
   } catch (error) {
     console.error("Update order status error:", error);
     next(error);
   }
-}
+};
 
 /* =========================
    UPDATE PAYMENT STATUS
@@ -1462,28 +1541,39 @@ exports.getOrderItems = async (req, res, next) => {
    POST /api/hotel/orders/:orderId/items
 ========================= */
 exports.addOrderItem = async (req, res, next) => {
+  const client = await db.getClient();
+
   try {
     const hotelId = req.hotelId;
     const { orderId } = req.params;
 
-    const items = Array.isArray(req.body.items)
-      ? req.body.items
-      : [req.body];
+    const items = Array.isArray(req.body.items) ? req.body.items : [req.body];
 
     if (!items.length) {
       return errorResponse(res, 400, "Items are required");
     }
 
-    const orderRes = await db.query(
-      `SELECT id, status FROM orders WHERE id = $1 AND hotel_id = $2`,
+    await client.query("BEGIN");
+
+    const orderRes = await client.query(
+      `
+      SELECT id, status, order_number, table_id
+      FROM orders
+      WHERE id = $1 AND hotel_id = $2
+      FOR UPDATE
+      `,
       [orderId, hotelId]
     );
 
     if (orderRes.rows.length === 0) {
+      await client.query("ROLLBACK");
       return errorResponse(res, 404, "Order not found");
     }
 
-    if (["completed", "cancelled"].includes(orderRes.rows[0].status)) {
+    const order = orderRes.rows[0];
+
+    if (["completed", "cancelled"].includes(order.status)) {
+      await client.query("ROLLBACK");
       return errorResponse(
         res,
         409,
@@ -1491,59 +1581,49 @@ exports.addOrderItem = async (req, res, next) => {
       );
     }
 
-    await db.query("BEGIN");
-
     const insertedItems = [];
 
     for (const item of items) {
-      const {
-        menu_item_id,
-        quantity = 1,
-        special_instructions,
-      } = item;
+      const { menu_item_id, quantity = 1, special_instructions } = item;
 
       if (!menu_item_id) {
-        await db.query("ROLLBACK");
+        await client.query("ROLLBACK");
         return errorResponse(res, 400, "menu_item_id is required");
       }
 
-      if (Number(quantity) <= 0) {
-        await db.query("ROLLBACK");
+      const qty = parseInt(quantity, 10);
+
+      if (!qty || qty <= 0) {
+        await client.query("ROLLBACK");
         return errorResponse(res, 400, "quantity must be > 0");
       }
 
-      const itemRes = await db.query(
+      const itemRes = await client.query(
         `
-        SELECT
-          id,
-          name,
-          price,
-          is_available
+        SELECT id, name, price, is_available
         FROM menu_items
-        WHERE id = $1
-          AND hotel_id = $2
+        WHERE id = $1 AND hotel_id = $2
         LIMIT 1
         `,
         [menu_item_id, hotelId]
       );
 
       if (itemRes.rows.length === 0) {
-        await db.query("ROLLBACK");
+        await client.query("ROLLBACK");
         return errorResponse(res, 404, "Menu item not found");
       }
 
       const menuItem = itemRes.rows[0];
 
       if (!menuItem.is_available) {
-        await db.query("ROLLBACK");
+        await client.query("ROLLBACK");
         return errorResponse(res, 409, `${menuItem.name} is not available`);
       }
 
       const unitPrice = Number(menuItem.price);
-      const qty = parseInt(quantity);
       const totalPrice = unitPrice * qty;
 
-      const inserted = await db.query(
+      const inserted = await client.query(
         `
         INSERT INTO order_items (
           order_id,
@@ -1555,16 +1635,7 @@ exports.addOrderItem = async (req, res, next) => {
           special_instructions,
           status
         )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          'pending'
-        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
         RETURNING *
         `,
         [
@@ -1581,20 +1652,110 @@ exports.addOrderItem = async (req, res, next) => {
       insertedItems.push(inserted.rows[0]);
     }
 
-    await recalculateOrderTotals(orderId);
+    const totalsRes = await client.query(
+      `
+      SELECT COALESCE(SUM(total_price), 0) AS subtotal
+      FROM order_items
+      WHERE order_id = $1
+      `,
+      [orderId]
+    );
 
-    await db.query("COMMIT");
+    const subtotal = Number(totalsRes.rows[0].subtotal || 0);
+
+    const amountRes = await client.query(
+      `
+      SELECT tax_amount, service_charge, discount_amount
+      FROM orders
+      WHERE id = $1 AND hotel_id = $2
+      `,
+      [orderId, hotelId]
+    );
+
+    const amountRow = amountRes.rows[0];
+    const taxAmount = Number(amountRow.tax_amount || 0);
+    const serviceCharge = Number(amountRow.service_charge || 0);
+    const discountAmount = Number(amountRow.discount_amount || 0);
+    const totalAmount = subtotal + taxAmount + serviceCharge - discountAmount;
+
+    // ✅ IMPORTANT:
+    // When new item is added, make parent order pending again
+    const updatedOrderRes = await client.query(
+      `
+      UPDATE orders
+      SET
+        subtotal = $1,
+        total_amount = $2,
+        status = 'pending',
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3 AND hotel_id = $4
+      RETURNING *
+      `,
+      [subtotal, totalAmount, orderId, hotelId]
+    );
+
+    await client.query("COMMIT");
+
+    const completeOrder = await getOrderWithItems(orderId);
+
+    // ✅ Notify kitchen users
+    const kitchenUsers = await db.query(
+      `
+      SELECT id
+      FROM users
+      WHERE hotel_id = $1
+        AND role = 'kitchen'
+        AND is_active = true
+      `,
+      [hotelId]
+    );
+
+    const kitchenIds = kitchenUsers.rows.map((u) => u.id);
+
+    if (kitchenIds.length > 0) {
+      await NotificationService.sendToUsers(kitchenIds, {
+        title: "New Item Added 🔥",
+        body: `New item added to order ${order.order_number}`,
+        data: {
+          orderId,
+          tableId: order.table_id,
+          type: "order_item_added",
+          status: "pending",
+        },
+      });
+    }
+
+    // ✅ Realtime socket update for kitchen dashboard
+    const io = req.app.get("io");
+
+    if (io) {
+      io.to(`hotel:${hotelId}`).emit("order:item_added", {
+        orderId,
+        order: completeOrder,
+        items: insertedItems,
+      });
+
+      io.to(`hotel:${hotelId}`).emit("order:status", {
+        orderId,
+        status: "pending",
+      });
+
+      io.to(`hotel:${hotelId}`).emit("order:updated", completeOrder);
+    }
 
     return res.status(201).json({
       success: true,
       message: "Order items added successfully",
+      order: completeOrder || updatedOrderRes.rows[0],
       items: insertedItems,
       total_items: insertedItems.length,
     });
   } catch (error) {
-    await db.query("ROLLBACK");
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Add order item error:", error);
     next(error);
+  } finally {
+    client.release();
   }
 };
 /* =========================
