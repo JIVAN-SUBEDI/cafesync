@@ -310,8 +310,8 @@ async function initiateKhaltiPayment({ amount, pending, plan }) {
       ? "https://khalti.com/api/v2"
       : "https://dev.khalti.com/api/v2";
 
-  const returnUrl = `${process.env.BACKEND_PUBLIC_URL}/api/hotel/registration/payment/khalti/callback`;
-  const websiteUrl = process.env.BACKEND_PUBLIC_URL;
+  const returnUrl = `https://api.cafesync.online/api/hotel/registration/payment/khalti/callback`;
+  const websiteUrl = `https://api.cafesync.online`;
 
   const response = await axios.post(
     `${baseUrl}/epayment/initiate/`,
