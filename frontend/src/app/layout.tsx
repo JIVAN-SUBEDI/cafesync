@@ -64,6 +64,18 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <div
+  dangerouslySetInnerHTML={{
+    __html: `
+     <script
+  defer
+  src="https://analytica.gaurabkhanal.com.np/analytica.js"
+  data-analytica-api="https://fyp-uoth.onrender.com"
+  data-analytica-key="anl_d04a395a34996303c5946282712977e89420da77ba2cf5d5320b6a7e88c7db16"
+></script>
+    `,
+  }}
+/>
         <ReduxProvider>{children}</ReduxProvider>
       </body>
     </html>
